@@ -1,0 +1,405 @@
+---
+title: "HW2"
+author: "Menglin Wang"
+date: "2019Äê10ÔÂ4ÈÕ"
+output: html_document
+---
+
+
+```{r pkgs, message=F, warning=F}
+library(ggplot2)
+library(leaflet)
+library(proj4)
+library(geoR)
+library(dplyr)
+library(fields)
+library(mgcv)
+```
+
+# 1.Fittign semivariograms/covariance functions with simulated data
+Simulate a 100 points in Gaussian Random Field with $\tau^2 = 0.01$, $\sigma^2 = 0.5$, $\phi = 1.5$ and $\kappa = 1$
+```{r}
+set.seed(2019)
+sim.dat <- grf(n=100, cov.model = "matern", cov.pars = c(0.5, 1.5), nugget = 0.01, kappa = 1)
+```
+## 1.a Plot semivariogram function
+```{r}
+# cloud semivariogram (all pairwise points)
+vario1<-variog(sim.dat,option="cloud")
+vario1$max.dist
+
+plot(vario1,xlab="Distance (h)")
+
+# binned semivariogram
+vario2<-variog(sim.dat,uvec=seq(0,vario1$max.dist,l=10),option="bin")
+plot(vario2,xlab="Distance (h)")
+```
+the eyeballing parameters are $\tau^2 = 0.02$, $\sigma^2 = 0.3$ and $\phi = 1.2$.
+Both still and nugget are approximately right, but range seems smaller than what we expected.
+
+## 1.b fit theoretical semivariogram
+### 1.b Part 1 Gaussian Function
+```{r}
+# Gaussian Function (OLS)
+gau_vfit_ols=variofit(vario2,ini.cov.pars=c(0.3,1.2),nugget=0.02,fix.nugget=FALSE,cov.model='gaussian', weights="equal")
+plot(vario2,xlab="Distance (h)")
+# add ols fitted line to the binned semivariogram and eyeballed curve
+lines(gau_vfit_ols,col="blue",lwd=1.5)
+gau_vfit_ols
+```
+```{r}
+# Gaussian Function (WLS)
+gau_vfit_wls=variofit(vario2,ini.cov.pars=c(0.3,1.2),nugget=0.02,fix.nugget=FALSE,cov.model='gaussian', weights='cressie')
+plot(vario2,xlab="Distance (h)")
+# add ols fitted line to the binned semivariogram and eyeballed curve
+lines(gau_vfit_wls,col="red",lwd=1.5)
+gau_vfit_wls
+```
+```{r}
+# Gaussian Function (ML)
+mlfit_gau=likfit(sim.dat,ini.cov.pars=c(0.3,1.2),nugget=0.02, fix.nugget=FALSE,cov.model='gaussian', lik.method='ML')
+summary(mlfit_gau)
+
+#plot
+plot(vario2,xlab="Distance (h)")
+lines(mlfit_gau,col='green')
+```
+
+```{r}
+# Gaussian Function (REML)
+remlfit_gau=likfit(sim.dat,ini.cov.pars=c(0.3,1.2),nugget=0.02, fix.nugget=FALSE,cov.model='gaussian', lik.method='REML')
+summary(remlfit_gau)
+
+#plot
+plot(vario2,xlab="Distance (h)")
+lines(remlfit_gau,col='grey')
+```
+
+### 1.b Part 2 Matern Funciton
+```{r}
+# Matern Function (OLS)
+mat_vfit_ols=variofit(vario2,ini.cov.pars=c(0.3,1.2),nugget=0.02,fix.nugget=FALSE,cov.model='matern', weights="equal")
+plot(vario2,xlab="Distance (h)")
+# add ols fitted line to the binned semivariogram and eyeballed curve
+lines(mat_vfit_ols,col="blue",lwd=1.5)
+mat_vfit_ols
+```
+
+```{r}
+# Matern Function (WLS)
+mat_vfit_wls=variofit(vario2,ini.cov.pars=c(0.3,1.2),nugget=0.02,fix.nugget=FALSE,cov.model='matern', weights='cressie')
+plot(vario2,xlab="Distance (h)")
+# add ols fitted line to the binned semivariogram and eyeballed curve
+lines(mat_vfit_wls,col="red",lwd=1.5)
+mat_vfit_wls
+```
+
+```{r}
+# Matern Function (ML)
+mlfit_mat=likfit(sim.dat,ini.cov.pars=c(0.3,1.2),nugget=0.02, fix.nugget=FALSE,cov.model='matern', lik.method='ML')
+summary(mlfit_mat)
+
+#plot
+plot(vario2,xlab="Distance (h)")
+lines(mlfit_mat,col='green')
+```
+
+```{r}
+# Matern Function (REML)
+remlfit_mat=likfit(sim.dat,ini.cov.pars=c(0.3,1.2),nugget=0.02, fix.nugget=FALSE,cov.model='matern', lik.method='REML')
+summary(remlfit_mat)
+
+#plot
+plot(vario2,xlab="Distance (h)")
+lines(remlfit_mat,col='grey')
+```
+
+
+
+|Function|Estimation Method|$\phi$| $\tau^2$|$\sigma^2$ | SSE | AIC |
+|:-------|:----------------|:-----|:--------|:----------|:----|:----|
+|True| | 1.5|0.01|0.5|||
+|Gaussian|OLS|24.12|0.01|104.75|0.0025||
+|Gaussian|WLS|1.05|0.01|0.24|12.8254||
+|Gaussian|ML|0.71|0.01|0.19||-120.4|
+|Gaussian|REML|0.79|0.01|0.31||-124.4|
+|Matern|OLS|31739|0.00|5943|0.0139||
+|Matern|WLS|147.75|0.01|17.14|176.97||
+|Matern|ML|3.71|0.01|0.21||-113|
+|Matern|REML|25.66|0.01|1.42||-108.2|
+
+All models estimated nugget well, however the performances of estimating range and still varies among idfferent models. Generally speaking, Gaussian function perform better on parater estimation. According to the plots, Gaussian function with OLS is the best fitted model, however, it might overfited the model. Gaussian WLS, in spite have higher sum square error, had better estimated parameters. 
+
+## 1.c Refit the model with new simulated data
+
+```{r}
+# data simulation
+set.seed(1234)
+sim.dat2 <- grf(n=100, cov.model = "matern", cov.pars = c(0.5, 1.5), nugget = 0.01, kappa = 1)
+set.seed(2945)
+sim.dat3 <- grf(n=100, cov.model = "matern", cov.pars = c(0.5, 1.5), nugget = 0.01, kappa = 1)
+```
+```{r}
+# cloud semivariogram (all pairwise points) of data 2
+vario2<-variog(sim.dat2,option="cloud")
+
+
+plot(vario2,xlab="Distance (h)")
+
+# binned semivariogram
+bvario2<-variog(sim.dat2,uvec=seq(0,vario2$max.dist,l=10),option="bin")
+plot(bvario2,xlab="Distance (h)")
+```
+```{r}
+# cloud semivariogram (all pairwise points) of data 3
+vario3<-variog(sim.dat3,option="cloud")
+
+
+plot(vario3,xlab="Distance (h)")
+
+# binned semivariogram
+bvario3<-variog(sim.dat3,uvec=seq(0,vario3$max.dist,l=10),option="bin")
+plot(bvario3,xlab="Distance (h)")
+```
+
+```{r}
+# Gaussian Function (WLS) with simulated data 2
+gau_vfit_wls_2=variofit(bvario2,ini.cov.pars=c(0.3,1.2),nugget=0.02,fix.nugget=FALSE,cov.model='gaussian', weights='cressie')
+plot(bvario2,xlab="Distance (h)")
+# add ols fitted line to the binned semivariogram and eyeballed curve
+lines(gau_vfit_wls_2,col="red",lwd=1.5)
+gau_vfit_wls_2
+```
+
+```{r}
+# Gaussian Function (WLS) with simulated data 3
+gau_vfit_wls_3=variofit(bvario3,ini.cov.pars=c(0.3,1.2),nugget=0.02,fix.nugget=FALSE,cov.model='gaussian', weights='cressie')
+plot(bvario3,xlab="Distance (h)")
+# add ols fitted line to the binned semivariogram and eyeballed curve
+lines(gau_vfit_wls_3,col="blue",lwd=1.5)
+gau_vfit_wls_3
+```
+```{r}
+gau_vfit_wls_3
+```
+
+
+| data | $\phi$ | $\tau^2$ | $\sigma^2$ | SSE |
+|:-----|:-------|:---------|:-----------|:----|
+| True | 1.5|0.01|0.5||
+|Data1 |1.05|0.01|0.24|12.8254|
+|Data2 |2.29|0.02|0.30|78.4086|
+|Data3 |4.52|0.01|0.29|85.454|
+
+
+The estimation seems depend on the simulated dataset which might because of the small sample size (100 points) I used.
+
+
+
+# 2
+```{r}
+# loading data
+dorian <- read.csv('C:/Users/96349/Desktop/PM569 Spatial Statistics/HW/HW1/dorian.csv')
+```
+
+```{r}
+dorian$log_wspd <- log(dorian$wind.sp)
+log_wd_speed_geo<-as.geodata(dorian,coords.col=c(1,2), data.col=10)
+plot(log_wd_speed_geo)
+summary(log_wd_speed_geo)
+```
+
+
+```{r}
+# creat maps for wind speed
+pm.pal = colorNumeric(c('darkgreen','goldenrod','brown','brown'),
+                        domain=dorian$log_wspd)
+  leaflet(dorian) %>% 
+  addProviderTiles('CartoDB.Positron') %>% 
+  addCircles(lat=~lat,lng=~lon,label=~paste0(wind.sp, ' m/s'), color=~pm.pal(wind.sp),
+             opacity=1, fillOpacity=1, radius=500) %>%
+  addLegend('bottomleft', pal=pm.pal, values=dorian$wind.sp,
+            title='Wind Speed (m/s)', opacity=1)
+```
+
+```{r}
+proj_utm17<-"+proj=utm +zone=17 +north +datum=WGS84 +units=km"
+newcoords2<-project(as.matrix(cbind(dorian$lon, dorian$lat)), proj=proj_utm17)
+dorian$x_utm<-newcoords2[,1]
+dorian$y_utm<-newcoords2[,2]
+head(dorian)
+```
+```{r}
+wspd_geo<-as.geodata(dorian,coords.col=c(11,12),data.col=10)
+plot(wspd_geo)
+summary(wspd_geo)
+```
+
+```{r}
+# cloud semivariogram (all pairwise points)
+vario1_dorian<-variog(wspd_geo,option="cloud")
+
+plot(vario1_dorian,xlab="Distance (h)")
+
+# binned semivariogram
+vario2_dorian<-variog(wspd_geo,uvec=seq(0,vario1_dorian$max.dist,l=20),option="bin")
+plot(vario2_dorian,xlab="Distance (h)")
+```
+
+
+```{r}
+# Gaussian WLS
+gau_wls=variofit(vario2_dorian,ini.cov.pars=c(0.01,0.1),nugget=0.02,fix.nugget=FALSE,cov.model='gaussian', weights='cressie')
+plot(vario2_dorian,xlab="Distance (h)")
+# add ols fitted line to the binned semivariogram and eyeballed curve
+lines(gau_wls,col="red",lwd=1.5)
+gau_wls
+```
+```{r}
+# Gaussian ML
+gaussian_ml=likfit(wspd_geo,ini.cov.pars=c(1,150),nugget=0.02, fix.nugget=FALSE,cov.model='gaussian', lik.method='ML')
+summary(gaussian_ml)
+
+#plot
+plot(vario2_dorian,xlab="Distance (h)")
+lines(gaussian_ml,col='green')
+```
+```{r}
+# Exponential WLS
+exp_wls=variofit(vario2_dorian,ini.cov.pars=c(1,150),nugget=0.01,fix.nugget=FALSE,cov.model='exponential', weights='cressie')
+plot(vario2_dorian,xlab="Distance (h)")
+# add ols fitted line to the binned semivariogram and eyeballed curve
+lines(exp_wls,col="red",lwd=1.5)
+exp_wls
+```
+
+```{r}
+# Exponential ML
+exp_ml=likfit(wspd_geo,ini.cov.pars=c(5,600),nugget=0.01, fix.nugget=FALSE,cov.model='exponential', lik.method='ML')
+summary(exp_ml)
+
+#plot
+plot(vario2_dorian,xlab="Distance (h)")
+lines(exp_ml,col='green')
+```
+```{r}
+# Matern WLS
+mat_wls=variofit(vario2_dorian,ini.cov.pars=c(1,150),nugget=0.01,fix.nugget=FALSE,cov.model='matern',kappa = 0.8, weights='cressie')
+plot(vario2_dorian,xlab="Distance (h)")
+# add ols fitted line to the binned semivariogram and eyeballed curve
+lines(mat_wls,col="red",lwd=1.5)
+mat_wls
+```
+```{r}
+# Exponential ML
+mat_ml=likfit(wspd_geo,ini.cov.pars=c(2,600),nugget=0.01, fix.nugget=FALSE,cov.model='matern', lik.method='ML',kappa = 0.8)
+summary(mat_ml)
+
+#plot
+plot(vario2_dorian,xlab="Distance (h)")
+lines(mat_ml,col='green')
+```
+
+
+|Estimation Method|Function|$\phi$|$\tau^2$|$\sigma^2$|Fit|Type|
+|:----------------|:-------|:-----|:-------|:---------|:--|----|
+|WLS|Gaussian|0.1|0.04|0.99|862.1848|SSE|
+|WLS|Exponential|0.04|0.03|218.04|317.5698|SSE|
+|WLS|Matern|212982|0.05|11892|131.0348|SSE|
+|ML|Gaussian|587.25|0.08|0.97|54.91|BIC|
+|ML|Exponential|1235.03|0.05|0.93|58.16|BIC|
+|ML|Matern|600|0.06|0.87|56.69|BIC|
+
+According the eyeball parameter and SSE/BIC, the best fitted model is Gaussian ML, since the parameter estimated is closed to our previously observed numbers and it has lower BIC than Matern ML. But these two model, Matern ML and Gaussian ML, has similar performance. Other models have extreme large or small range which made thir estimations not convincing.
+
+# 3. Ordinary Kriging
+```{r grid}
+res=61
+xs=seq(min(dorian$x_utm),max(dorian$x_utm),len=res)
+ys=seq(min(dorian$y_utm),max(dorian$y_utm),len=res)
+or_Grid=expand.grid(xs,ys)
+names(or_Grid)=c('x','y')
+
+# make sure it looks correct
+plot(or_Grid, pch=19, cex=0.5)
+```
+
+
+```{r}
+# Ordinary kriging (constant unknown mean)
+KCord_ml<-krige.control(type.krige='ok',obj.m=gaussian_ml)
+ordinary_krige_ml<-krige.conv(wspd_geo,locations=or_Grid,krige=KCord_ml)
+
+# plot gridded predictions
+image.plot(xs,ys,matrix(ordinary_krige_ml$predict,res,res,byrow=FALSE),col=tim.colors(32), main="Ordinary Kriging by ML")
+# plot standard errors
+image.plot(xs,ys,matrix(sqrt(ordinary_krige_ml$krige.var),res,res,byrow=FALSE),col=tim.colors(32), main="Ordinary Kriging ML Errors")
+```
+
+Ordinary kriging is a method to predict dependent variable at unknown locations by weigted summing values at known locations.In addition to merely consider distance structure, ordinary kriging incorporates covariance structure among Ys to estimate weights for each known Ys. The estimated mean which is assumed to be constant is 2.932611.
+
+# 4. Universial Kriging
+```{r}
+# check trends first
+summary(lm(log_wspd~x_utm+y_utm,data=dorian))
+summary(lm(log_wspd~x_utm+I(x_utm^2)+y_utm+I(y_utm^2)+ I(x_utm*y_utm),data=dorian))
+```
+The data has quadratic trend on the domain so we will try to fit a universial kriging model with quadratic model.
+When we use Gaussian ML, the only model we can fit is linear trend model (listed below). When we try to fit quadratic trend with it, the singular error arises.So we will use Matern ML to fit quadratic trend model.
+```{r}
+# kriging with linear trend
+
+mlfit_trend1_gau=likfit(wspd_geo,ini.cov.pars=c(0.5,100),nugget=0.05, fix.nugget=FALSE, cov.model='gaussian', lik.method='ML',trend= '1st' )
+
+# kriging with linear trend (seems to be a better fit)
+kriged_grid_trend1=krige.conv(wspd_geo,locations=or_Grid,krige=krige.control(obj.model=mlfit_trend1_gau,trend.d='1st',trend.l='1st'))
+```
+
+```{r}
+# have problem with negative predictions, set them to 0
+kriged_grid_trend1$predict2<-ifelse(kriged_grid_trend1$predict<0,0,kriged_grid_trend1$predict)
+# plot gridded predictions
+image.plot(xs,ys,matrix(kriged_grid_trend1$predict2,res,res,byrow=FALSE),col=tim.colors(32), main="Universal Kriging by ML Linear Trend")
+```
+
+## Fit Quadratic trend with Matern ML
+
+
+```{r}
+# kriging with Quad trend
+
+mlfit_trend2_gau=likfit(wspd_geo,ini.cov.pars=c(0.5,100),nugget=0.05, kappa = 2, fix.nugget=FALSE, cov.model='matern', lik.method='ML',trend= '2nd')
+
+k_control <- krige.control(obj.model=mlfit_trend2_gau,trend.d='2nd',trend.l='2nd')
+# kriging with linear trend (seems to be a better fit)
+kriged_grid_trend2=krige.conv(wspd_geo,locations=or_Grid,krige=k_control)
+```
+```{r}
+k_control
+```
+
+```{r}
+# have problem with negative predictions, set them to 0
+kriged_grid_trend$predict2<-ifelse(kriged_grid_trend$predict<0,0,kriged_grid_trend$predict)
+# plot gridded predictions
+image.plot(xs,ys,matrix(kriged_grid_trend$predict2,res,res,byrow=FALSE),col=tim.colors(32), main="Universal Kriging by ML Linear Trend")
+```
+```{r}
+kriged_grid_trend$beta.est
+```
+
+The intercept is -4.24 and the coefficient for x and y are 0.0034 and 0.00095 respectively.
+Universial Kriging assume a trend in the spatial domain, not only assume it's a unknown constant, like ordinary kriging. In addition to 
+
+
+
+
+
+
+
+
+
+
+
+
+
